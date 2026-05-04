@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atualizar Tesouro Direto — Ferramenta Privada</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f4f8; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+  .container { background: #fff; border-radius: 16px; padding: 2.5rem; max-width: 600px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.10); }
+  h1 { font-size: 22px; font-weight: 700; color: #1a1a18; margin-bottom: .4rem; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 2rem; }
+  .step { background: #f8f7f4; border-radius: 10px; padding: 1.25rem; margin-bottom: 1rem; }
+  .step-num { font-size: 11px; font-weight: 700; color: #185FA5; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .4rem; }
+  .step h3 { font-size: 14px; font-weight: 600; margin-bottom: .4rem; }
+  .step p { font-size: 13px; color: #555; line-height: 1.6; }
+  .step a { color: #185FA5; }
+  .upload-zone { border: 2px dashed #ccc; border-radius: 10px; padding: 2rem; text-align: center; cursor: pointer; transition: all .2s; margin-top: .75rem; }
+  .upload-zone:hover { border-color: #185FA5; background: #E6F1FB; }
+  .upload-zone.drag { border-color: #185FA5; background: #E6F1FB; }
+  .upload-zone p { font-size: 13px; color: #666; margin-bottom: .75rem; }
+  input[type=file] { display: none; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; font-size: 14px; font-weight: 600; border-radius: 8px; cursor: pointer; border: none; font-family: inherit; transition: all .15s; }
+  .btn-primary { background: #185FA5; color: #fff; }
+  .btn-primary:hover { background: #0C447C; }
+  .btn-success { background: #1D9E75; color: #fff; }
+  .btn-success:hover { background: #0F6E56; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .progress { display: none; margin-top: 1.5rem; }
+  .progress-bar-wrap { background: #eee; border-radius: 99px; height: 8px; margin-bottom: .5rem; overflow: hidden; }
+  .progress-bar { height: 100%; background: #185FA5; border-radius: 99px; width: 0%; transition: width .3s; }
+  .progress-label { font-size: 12px; color: #666; }
+  .result { display: none; background: #E1F5EE; border: 1px solid #9FE1CB; border-radius: 10px; padding: 1.25rem; margin-top: 1rem; }
+  .result h3 { font-size: 15px; font-weight: 700; color: #085041; margin-bottom: .5rem; }
+  .result p { font-size: 13px; color: #085041; line-height: 1.6; margin-bottom: 1rem; }
+  .error { display: none; background: #FCEBEB; border: 1px solid #F7C1C1; border-radius: 10px; padding: 1.25rem; margin-top: 1rem; }
+  .error h3 { font-size: 14px; font-weight: 700; color: #791F1F; margin-bottom: .4rem; }
+  .error p { font-size: 13px; color: #791F1F; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: .75rem 0 1rem; }
+  .stat { background: #fff; border-radius: 8px; padding: .6rem .75rem; text-align: center; }
+  .stat-val { font-size: 18px; font-weight: 700; color: #1D9E75; }
+  .stat-lab { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔒 Ferramenta de atualização</h1>
+  <p class="subtitle">Uso privado — gera o index.html atualizado para publicar no GitHub</p>
+
+  <div class="step">
+    <div class="step-num">Passo 1</div>
+    <h3>Baixar o CSV oficial do Tesouro Direto</h3>
+    <p>Acesse o link abaixo e baixe o arquivo <strong>precotaxatesourodireto.csv</strong>:</p>
+    <p style="margin-top:.5rem"><a href="https://www.tesourotransparente.gov.br/ckan/dataset/taxas-dos-titulos-ofertados-pelo-tesouro-direto" target="_blank">→ Tesouro Transparente (abrir em nova aba)</a></p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">Passo 2</div>
+    <h3>Carregar o CSV aqui</h3>
+    <p>Arraste o arquivo baixado ou clique para selecionar:</p>
+    <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-csv').click()">
+      <p>📂 Arraste o arquivo CSV aqui ou clique para selecionar</p>
+      <button class="btn btn-primary" onclick="event.stopPropagation(); document.getElementById('file-csv').click()">Selecionar arquivo</button>
+      <input type="file" id="file-csv" accept=".csv" onchange="handleCSV(event)">
+    </div>
+  </div>
+
+  <div class="progress" id="progress-area">
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+    <div class="progress-label" id="progress-label">Processando...</div>
+  </div>
+
+  <div class="error" id="error-area">
+    <h3>Erro ao processar</h3>
+    <p id="error-msg"></p>
+  </div>
+
+  <div class="result" id="result-area">
+    <h3>✅ index.html gerado com sucesso!</h3>
+    <div class="stats">
+      <div class="stat"><div class="stat-val" id="st-registros">—</div><div class="stat-lab">Registros</div></div>
+      <div class="stat"><div class="stat-val" id="st-titulos">—</div><div class="stat-lab">Títulos</div></div>
+      <div class="stat"><div class="stat-val" id="st-anos">—</div><div class="stat-lab">Anos hist.</div></div>
+    </div>
+    <p>O arquivo <strong>index.html</strong> foi baixado automaticamente com os dados embutidos. Agora faça o upload desse arquivo no GitHub para atualizar o site público.</p>
+    <button class="btn btn-success" id="btn-download" onclick="triggerDownload()">⬇ Baixar index.html novamente</button>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// SITE TEMPLATE — o index.html público completo
+// Os dados serão injetados em DATA_PLACEHOLDER
+// ==========================================
+var SITE_TEMPLATE = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tesouro Direto — Análise Completa</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"><\/script>
+<style>
+  :root {
+    --bg:#f8f7f4;--surface:#fff;--surface2:#f1f0ec;--border:rgba(0,0,0,.1);--border2:rgba(0,0,0,.18);
+    --text:#1a1a18;--text2:#5f5e5a;--text3:#888780;
+    --blue:#185FA5;--blue-l:#E6F1FB;--blue-d:#0C447C;
+    --green:#1D9E75;--green-l:#E1F5EE;--green-d:#085041;
+    --amber:#BA7517;--amber-l:#FAEEDA;--amber-d:#633806;
+    --red:#A32D2D;--red-l:#FCEBEB;--red-d:#791F1F;
+    --radius:10px;--radius-lg:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.6}
+  .app{display:flex;min-height:100vh}
+  .sidebar{width:240px;background:var(--surface);border-right:1px solid var(--border);padding:1.5rem 0;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0}
+  .main{flex:1;padding:2rem;overflow-x:hidden;max-width:960px}
+  .sidebar-logo{padding:0 1.25rem 1.25rem;border-bottom:1px solid var(--border);margin-bottom:.75rem}
+  .sidebar-logo h2{font-size:15px;font-weight:700;color:var(--text)}
+  .sidebar-logo p{font-size:11px;color:var(--text3);margin-top:2px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 1.25rem;font-size:13px;color:var(--text2);cursor:pointer;border-left:2px solid transparent;transition:all .15s}
+  .nav-item:hover{background:var(--surface2);color:var(--text)}
+  .nav-item.active{color:var(--blue);border-left-color:var(--blue);background:var(--blue-l);font-weight:600}
+  .nav-section{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;padding:.9rem 1.25rem .35rem}
+  .data-badge{font-size:10px;background:var(--green-l);color:var(--green-d);padding:3px 10px;border-radius:99px;font-weight:600;margin:0 1.25rem .75rem;display:block;text-align:center}
+  .page-header{margin-bottom:1.5rem}
+  .page-header h1{font-size:22px;font-weight:700}
+  .page-header p{font-size:13px;color:var(--text2);margin-top:4px}
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.5rem}
+  .metric{background:var(--surface2);border-radius:var(--radius);padding:.9rem 1rem}
+  .metric-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;font-weight:600}
+  .metric-value{font-size:21px;font-weight:700;color:var(--text);line-height:1.1}
+  .metric-sub{font-size:10px;color:var(--text3);margin-top:3px}
+  .metric-value.up{color:var(--green)}.metric-value.down{color:var(--red)}.metric-value.warn{color:var(--amber)}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1.25rem;margin-bottom:1rem;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .card h3{font-size:15px;font-weight:700;margin-bottom:.4rem}
+  .card p{font-size:13px;color:var(--text2);line-height:1.6}
+  .chart-wrap{position:relative;width:100%;height:260px}
+  .chart-wrap.tall{height:320px}
+  .title-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px;margin-bottom:1.25rem}
+  .title-btn{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;cursor:pointer;text-align:left;transition:all .15s;width:100%}
+  .title-btn:hover{border-color:var(--border2);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .title-btn.selected{border-color:var(--blue);border-width:1.5px;background:var(--blue-l)}
+  .title-btn .tb-name{font-size:11px;font-weight:700;color:var(--text);margin-bottom:2px}
+  .title-btn .tb-rate{font-size:20px;font-weight:700;margin:3px 0}
+  .title-btn .tb-tipo{font-size:10px;color:var(--text3)}
+  .range-btns{display:flex;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border2);width:fit-content;margin-bottom:1rem}
+  .range-btn{padding:6px 14px;font-size:12px;cursor:pointer;border:none;background:var(--surface);color:var(--text2);font-family:inherit;transition:all .15s}
+  .range-btn:hover{background:var(--surface2)}
+  .range-btn.active{background:var(--blue);color:#fff;font-weight:600}
+  .ind-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)}
+  .ind-row:last-child{border-bottom:none}
+  .ind-name{font-size:13px;flex:1}
+  .ind-val{font-size:13px;font-weight:700;min-width:70px;text-align:right}
+  .badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;white-space:nowrap}
+  .badge-green{background:var(--green-l);color:var(--green-d)}
+  .badge-red{background:var(--red-l);color:var(--red-d)}
+  .badge-amber{background:var(--amber-l);color:var(--amber-d)}
+  .badge-blue{background:var(--blue-l);color:var(--blue-d)}
+  .alert{border-left:3px solid;border-radius:0 var(--radius) var(--radius) 0;padding:.85rem 1rem;margin-bottom:.75rem}
+  .alert h4{font-size:13px;font-weight:700;margin-bottom:3px}
+  .alert p{font-size:12px;line-height:1.55}
+  .alert-green{border-color:var(--green);background:var(--green-l)}.alert-green h4{color:var(--green-d)}
+  .alert-amber{border-color:var(--amber);background:var(--amber-l)}.alert-amber h4{color:var(--amber-d)}
+  .alert-blue{border-color:var(--blue);background:var(--blue-l)}.alert-blue h4{color:var(--blue-d)}
+  .alert-red{border-color:var(--red);background:var(--red-l)}.alert-red h4{color:var(--red-d)}
+  .rec-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:1rem 1.25rem;margin-bottom:.75rem}
+  .rec-card.featured{border-color:var(--blue);border-width:1.5px}
+  .rec-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.5rem}
+  .rec-name{font-size:14px;font-weight:700}
+  .rec-rate{font-size:20px;font-weight:700}
+  .rec-desc{font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:.5rem}
+  .tags{display:flex;gap:5px;flex-wrap:wrap}
+  .tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px}
+  .sim-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem}
+  .sim-field label{display:block;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-bottom:6px}
+  .sim-field input[type=number]{width:100%;padding:8px 12px;font-size:14px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--surface);color:var(--text)}
+  .sim-field input[type=range]{width:100%;margin-top:6px}
+  .slider-val{font-size:14px;font-weight:700;margin-top:3px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12px;color:var(--text2)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .leg-sq{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+  .perfil-btns{display:flex;gap:8px;margin-bottom:1.25rem;flex-wrap:wrap}
+  .perfil-btn{padding:8px 18px;font-size:13px;font-weight:600;border:1px solid var(--border2);border-radius:var(--radius);cursor:pointer;background:var(--surface);color:var(--text2);font-family:inherit;transition:all .15s}
+  .perfil-btn.active{background:var(--blue-l);color:var(--blue-d);border-color:var(--blue)}
+  .scen-row{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+  .scen-row:last-child{border-bottom:none}
+  .scen-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+  .scen-title{font-size:13px;font-weight:700;margin-bottom:2px}
+  .scen-sub{font-size:12px;color:var(--text2);line-height:1.55}
+  .hidden{display:none!important}
+  .sl{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:1rem 0 .5rem}
+  .rating-bar{display:flex;gap:2px;margin:5px 0}
+  .rb{width:10px;height:10px;border-radius:2px}
+  .rb.on{background:var(--blue)}.rb.off{background:var(--border)}
+  @media(max-width:720px){.sidebar{display:none}.main{padding:1rem}.sim-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <h2>Tesouro Direto</h2>
+      <p>Análise histórica + macro</p>
+    </div>
+    <span class="data-badge" id="sidebar-date">Carregando...</span>
+    <div class="nav-section">Análise histórica</div>
+    <div class="nav-item active" onclick="showPage('overview')"><span>◉</span> Visão geral</div>
+    <div class="nav-item" onclick="showPage('historico')"><span>📈</span> Histórico por título</div>
+    <div class="nav-item" onclick="showPage('resgatar')"><span>💡</span> Quando resgatar</div>
+    <div class="nav-section">Macro + inteligente</div>
+    <div class="nav-item" onclick="showPage('macro')"><span>🏛</span> Painel macro</div>
+    <div class="nav-item" onclick="showPage('titulos')"><span>⭐</span> Qual título escolher</div>
+    <div class="nav-item" onclick="showPage('cenarios')"><span>🔮</span> Cenários futuros</div>
+    <div class="nav-item" onclick="showPage('simulador')"><span>🧮</span> Simulador</div>
+  </nav>
+
+  <main class="main" id="main-content">
+
+    <div id="page-overview">
+      <div class="page-header"><h1>Visão geral</h1><p>Taxas e preços atuais de todos os títulos</p></div>
+      <div class="metrics" id="overview-metrics"></div>
+      <div class="card">
+        <h3>Taxas de compra atuais por título</h3>
+        <p style="font-size:12px;color:var(--text3);margin-bottom:1rem">Comparativo da última data disponível no arquivo</p>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px" id="legend-compare"></div>
+        <div class="chart-wrap"><canvas id="chart-compare" role="img" aria-label="Taxas por título">Comparativo de taxas.</canvas></div>
+      </div>
+      <div class="sl">Clique em um título para ver o histórico</div>
+      <div class="title-grid" id="title-cards-overview"></div>
+    </div>
+
+    <div id="page-historico" class="hidden">
+      <div class="page-header"><h1>Histórico por título</h1><p>Selecione um título para ver a evolução de taxa e preço</p></div>
+      <div class="title-grid" id="title-cards-hist"></div>
+      <div id="hist-detail" class="hidden">
+        <div class="metrics" id="hist-metrics"></div>
+        <div class="range-btns">
+          <button class="range-btn" onclick="setRange('6m')">6 meses</button>
+          <button class="range-btn" onclick="setRange('1a')">1 ano</button>
+          <button class="range-btn active" onclick="setRange('2a')">2 anos</button>
+          <button class="range-btn" onclick="setRange('5a')">5 anos</button>
+          <button class="range-btn" onclick="setRange('max')">Máximo</button>
+        </div>
+        <div class="card"><h3 id="hist-taxa-title">Taxa histórica</h3><p style="font-size:12px;color:var(--text3);margin-bottom:1rem">% ao ano — quanto maior a taxa, menor o preço unitário</p><div class="chart-wrap"><canvas id="chart-taxa" role="img" aria-label="Taxa histórica">Taxa.</canvas></div></div>
+        <div class="card"><h3 id="hist-pu-title">PU de compra histórico</h3><p style="font-size:12px;color:var(--text3);margin-bottom:1rem">R$ — inversamente proporcional à taxa</p><div class="chart-wrap"><canvas id="chart-pu" role="img" aria-label="PU histórico">PU.</canvas></div></div>
+      </div>
+    </div>
+
+    <div id="page-resgatar" class="hidden">
+      <div class="page-header"><h1>Quando resgatar</h1><p>Guia prático + análise automática do momento atual</p></div>
+      <div id="resgatar-content"></div>
+    </div>
+
+    <div id="page-macro" class="hidden">
+      <div class="page-header"><h1>Painel macroeconômico</h1><p id="macro-date-label">Indicadores atualizados · Fonte: Focus/BCB, IBGE, IPEA, FMI</p><span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;background:var(--amber-l);color:var(--amber-d);display:inline-block;margin-top:6px">Selic em ciclo de corte · IPCA 4,14% · Risco fiscal elevado</span></div>
+      <div class="metrics" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+        <div class="metric"><div class="metric-label">Selic atual</div><div class="metric-value warn">14,75%</div><div class="metric-sub">1.º corte pós-ciclo</div></div>
+        <div class="metric"><div class="metric-label">Selic fim 2026</div><div class="metric-value">13,00%</div><div class="metric-sub">projeção Focus</div></div>
+        <div class="metric"><div class="metric-label">IPCA 12 meses</div><div class="metric-value warn">4,14%</div><div class="metric-sub">mar/26 · meta: 3% ±1,5</div></div>
+        <div class="metric"><div class="metric-label">IPCA projetado 2026</div><div class="metric-value down">4,80%</div><div class="metric-sub">acima do teto (4,5%)</div></div>
+        <div class="metric"><div class="metric-label">PIB 2026</div><div class="metric-value up">+1,8%</div><div class="metric-sub">projeção Focus</div></div>
+        <div class="metric"><div class="metric-label">Dívida bruta/PIB</div><div class="metric-value down">~79%</div><div class="metric-sub">trajetória ascendente</div></div>
+        <div class="metric"><div class="metric-label">Dólar fin 2026</div><div class="metric-value">R$ 5,30</div><div class="metric-sub">projeção Focus mai/26</div></div>
+        <div class="metric"><div class="metric-label">Juro real</div><div class="metric-value up">~10,6%</div><div class="metric-sub">2.º maior do mundo</div></div>
+      </div>
+      <div class="card">
+        <h3>Sinais para o investidor</h3>
+        <div class="sl">Política monetária</div>
+        <div class="ind-row"><span class="ind-name">Selic — ciclo de cortes iniciado</span><span class="ind-val">14,75%</span><span class="badge badge-amber">Atenção</span></div>
+        <div class="ind-row"><span class="ind-name">Projeção Selic dez/2026 (Focus)</span><span class="ind-val">13,00%</span><span class="badge badge-amber">Corte gradual</span></div>
+        <div class="ind-row"><span class="ind-name">Selic projetada 2027 (Focus)</span><span class="ind-val">11,00%</span><span class="badge badge-green">Queda contínua</span></div>
+        <div class="sl">Inflação</div>
+        <div class="ind-row"><span class="ind-name">IPCA acumulado 12 meses (mar/26)</span><span class="ind-val">4,14%</span><span class="badge badge-amber">Pressionado</span></div>
+        <div class="ind-row"><span class="ind-name">IPCA projetado 2026 (Focus)</span><span class="ind-val">4,80%</span><span class="badge badge-red">Acima do teto</span></div>
+        <div class="ind-row"><span class="ind-name">IPCA projetado 2027 (Focus)</span><span class="ind-val">4,00%</span><span class="badge badge-amber">Convergência lenta</span></div>
+        <div class="ind-row"><span class="ind-name">Meta do Banco Central</span><span class="ind-val">3% ±1,5</span><span class="badge badge-blue">Teto: 4,5%</span></div>
+        <div class="sl">Fiscal / Risco Brasil</div>
+        <div class="ind-row"><span class="ind-name">Dívida bruta / PIB (jan/26)</span><span class="ind-val">~79%</span><span class="badge badge-red">Trajetória alta</span></div>
+        <div class="ind-row"><span class="ind-name">FMI: dívida projetada 2027</span><span class="ind-val">~100%</span><span class="badge badge-red">Risco fiscal alto</span></div>
+        <div class="ind-row"><span class="ind-name">Déficit primário estimado 2026</span><span class="ind-val">~0,17% PIB</span><span class="badge badge-amber">Déficit leve</span></div>
+        <div class="ind-row"><span class="ind-name">Juro real (Selic − IPCA proj.)</span><span class="ind-val">~10,6%</span><span class="badge badge-green">2.º maior mundo</span></div>
+        <div class="sl">Câmbio e atividade</div>
+        <div class="ind-row"><span class="ind-name">Dólar projetado dez/2026 (Focus)</span><span class="ind-val">R$ 5,30</span><span class="badge badge-green">Real valorizado</span></div>
+        <div class="ind-row"><span class="ind-name">PIB 2026 (projeção)</span><span class="ind-val">+1,8%</span><span class="badge badge-amber">Desaceleração</span></div>
+      </div>
+      <div class="card"><h3>Leitura atual do mercado</h3><p>O Brasil está em ciclo raro: Selic altíssima (14,75%) com cortes graduais projetados, inflação acima do teto, fiscal deteriorando e juro real próximo de 10,6% — o segundo maior do mundo. Esse ambiente é extremamente favorável à renda fixa. Títulos pós-fixados (Selic) garantem retorno elevado com risco mínimo. O IPCA+ oferece oportunidade de travar taxa real histórica. Prefixados têm apelo se o investidor acredita que a Selic cairá mais do que o mercado projeta.</p></div>
+    </div>
+
+    <div id="page-titulos" class="hidden">
+      <div class="page-header"><h1>Qual título escolher agora</h1><p>Recomendações por perfil — cenário mai/2026</p></div>
+      <div class="sl">Selecione seu perfil</div>
+      <div class="perfil-btns">
+        <button class="perfil-btn active" onclick="setPerfil('conservador')">Conservador</button>
+        <button class="perfil-btn" onclick="setPerfil('moderado')">Moderado</button>
+        <button class="perfil-btn" onclick="setPerfil('arrojado')">Arrojado</button>
+      </div>
+      <div id="perfil-content"></div>
+    </div>
+
+    <div id="page-cenarios" class="hidden">
+      <div class="page-header"><h1>Cenários futuros</h1><p>Como cada cenário macroeconômico afeta os títulos</p></div>
+      <div class="card"><h3>🟢 Cenário base — mais provável (Focus, mai/2026)</h3><p style="margin-bottom:.75rem;font-size:13px">Selic cai de 14,75% para ~13% até dez/2026, depois ~11% em 2027. IPCA converge lentamente. Dívida/PIB sobe para ~85% em 2026.</p><div class="scen-row"><div class="scen-icon" style="background:var(--blue-l);color:var(--blue-d)">S</div><div><div class="scen-title">Tesouro Selic — excelente no curto prazo</div><div class="scen-sub">Retorno ainda superior a 13% a.a. até meados de 2027. Risco próximo de zero.</div></div></div><div class="scen-row"><div class="scen-icon" style="background:var(--green-l);color:var(--green-d)">I+</div><div><div class="scen-title">Tesouro IPCA+ — oportunidade histórica de taxa real</div><div class="scen-sub">Taxa real de ~7% a.a. Se Selic cair, PU sobe e investidor captura marcação positiva além do contrato.</div></div></div><div class="scen-row"><div class="scen-icon" style="background:var(--amber-l);color:var(--amber-d)">P</div><div><div class="scen-title">Prefixado — interessante, com risco de taxa persistir</div><div class="scen-sub">Se Selic cair como esperado, ganho de capital. Risco: IPCA teimoso pode forçar BC a pausar cortes.</div></div></div></div>
+      <div class="card"><h3>⭐ Cenário otimista</h3><div class="scen-row"><div class="scen-icon" style="background:var(--green-l);color:var(--green-d)">+</div><div><div class="scen-title">IPCA converge para 3,5% e Selic atinge 10% em 2028</div><div class="scen-sub">Melhor cenário para Prefixado e IPCA+ longo: PU dispara. Quem comprou IPCA+ 2035 com 7% real e taxa cair para 5% teria ganho expressivo de capital.</div></div></div></div>
+      <div class="card"><h3>🔴 Cenário pessimista</h3><div class="scen-row"><div class="scen-icon" style="background:var(--red-l);color:var(--red-d)">!</div><div><div class="scen-title">Selic precisa subir ou fica estagnada acima de 14%</div><div class="scen-sub">Piora fiscal, desancoragem de expectativas. Tesouro Selic vence. IPCA+ perde no PU mas protege no vencimento. Prefixado sofre mais.</div></div></div><div class="scen-row"><div class="scen-icon" style="background:var(--red-l);color:var(--red-d)">R</div><div><div class="scen-title">Risco Brasil sobe — CDS pressiona taxas longas</div><div class="scen-sub">Com dívida projetada entre 85–100% do PIB, um evento de mercado pode abrir taxas longas. Títulos curtos e Selic protegidos.</div></div></div></div>
+    </div>
+
+    <div id="page-simulador" class="hidden">
+      <div class="page-header"><h1>Simulador de rentabilidade</h1><p>Compare o crescimento real líquido de IR entre os títulos</p></div>
+      <div class="card">
+        <div class="sim-grid">
+          <div class="sim-field"><label>Valor investido (R$)</label><input type="number" id="sim-valor" value="10000" min="30" step="500" oninput="updateSim()"></div>
+          <div class="sim-field"><label>Prazo</label><input type="range" id="sim-prazo" min="1" max="20" value="5" step="1" oninput="updateSim()"><div class="slider-val"><span id="sim-prazo-v">5</span> anos</div></div>
+          <div class="sim-field"><label>IPCA médio projetado (% a.a.)</label><input type="range" id="sim-ipca" min="2" max="9" value="4.5" step="0.5" oninput="updateSim()"><div class="slider-val"><span id="sim-ipca-v">4,5</span>%</div></div>
+          <div class="sim-field"><label>Selic média projetada (% a.a.)</label><input type="range" id="sim-selic" min="8" max="16" value="12" step="0.5" oninput="updateSim()"><div class="slider-val"><span id="sim-selic-v">12,0</span>%</div></div>
+        </div>
+        <div class="metrics" id="sim-metrics"></div>
+        <div class="chart-wrap tall" style="margin-top:1rem"><canvas id="chart-sim" role="img" aria-label="Simulação">Simulação.</canvas></div>
+        <div class="legend" id="sim-legend"></div>
+        <p style="font-size:11px;color:var(--text3);margin-top:1rem">IR regressivo aplicado (22,5% até 6 meses → 15% após 2 anos). Não considera taxa de custódia B3 (0,2% a.a.). Simulação aproximada.</p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+var allData = DATA_PLACEHOLDER;
+var selectedTitle = null;
+var activeRange = '2a';
+var activePerfil = 'conservador';
+var charts = {};
+
+var COLORS = {'Tesouro Selic':'#185FA5','Tesouro IPCA+':'#1D9E75','Tesouro IPCA+ com Juros Semestrais':'#0F6E56','Tesouro Prefixado':'#BA7517','Tesouro Prefixado com Juros Semestrais':'#854F0B','Tesouro IGP-M+ com Juros Semestrais':'#534AB7'};
+function getColor(n){ for(var k in COLORS) if(n&&n.indexOf(k)>-1) return COLORS[k]; return '#888780'; }
+function fmtRate(v){ return v!=null?(v*100).toFixed(2)+'%':'—'; }
+function fmtPU(v){ return v!=null?'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}):'—'; }
+function fmtDate(d){ return d?new Date(d).toLocaleDateString('pt-BR'):'—'; }
+
+// Reconstitute dates
+allData.forEach(function(r){ r._date = r._date ? new Date(r._date) : null; });
+
+function getGroups(data){ var g={}; data.forEach(function(r){ if(!g[r.TipoTitulo]) g[r.TipoTitulo]=[]; g[r.TipoTitulo].push(r); }); return g; }
+function getLatest(rows){ return rows.length ? rows.reduce(function(a,b){ return a._date>b._date?a:b; }) : null; }
+function getPrevYear(rows){ var now=new Date(),target=new Date(now-365*86400000),best=null,bd=Infinity; rows.forEach(function(r){ if(!r._date) return; var d=Math.abs(r._date-target); if(d<bd){bd=d;best=r;} }); return best; }
+function filterRange(rows,range){ var now=new Date(),days={'6m':180,'1a':365,'2a':730,'5a':1825,'max':99999}[range]||730,cutoff=new Date(now-days*86400000); return rows.filter(function(r){return r._date&&r._date>=cutoff;}).sort(function(a,b){return a._date-b._date;}); }
+function decimateLabels(rows,max){ if(rows.length<=max) return rows; var step=Math.ceil(rows.length/max); return rows.filter(function(_,i){return i%step===0||i===rows.length-1;}); }
+function destroyChart(id){ if(charts[id]){try{charts[id].destroy();}catch(e){} delete charts[id];} }
+
+var groups = getGroups(allData);
+
+// Set sidebar date
+var latestAll = allData.reduce(function(a,b){return a._date>b._date?a:b;},allData[0]);
+var oldestAll = allData.reduce(function(a,b){return a._date<b._date?a:b;},allData[0]);
+document.getElementById('sidebar-date').textContent = 'Atualizado: '+fmtDate(latestAll._date);
+
+// BUILD OVERVIEW
+(function(){
+  var titles=Object.keys(groups), avgRate=0, cnt=0;
+  titles.forEach(function(t){ var l=getLatest(groups[t]); if(l&&l.TaxaCompraM){avgRate+=l.TaxaCompraM;cnt++;} });
+  avgRate=cnt?avgRate/cnt:0;
+  document.getElementById('overview-metrics').innerHTML=
+    '<div class="metric"><div class="metric-label">Títulos</div><div class="metric-value">'+titles.length+'</div><div class="metric-sub">tipos disponíveis</div></div>'+
+    '<div class="metric"><div class="metric-label">Registros históricos</div><div class="metric-value">'+allData.length.toLocaleString('pt-BR')+'</div><div class="metric-sub">dias úteis</div></div>'+
+    '<div class="metric"><div class="metric-label">Taxa média atual</div><div class="metric-value">'+fmtRate(avgRate)+'</div><div class="metric-sub">entre títulos</div></div>'+
+    '<div class="metric"><div class="metric-label">Histórico</div><div class="metric-value up">'+Math.round((latestAll._date-oldestAll._date)/86400000/365)+' anos</div><div class="metric-sub">'+fmtDate(oldestAll._date)+' → '+fmtDate(latestAll._date)+'</div></div>';
+  var names=[],rates=[],colors=[];
+  titles.forEach(function(t){ var l=getLatest(groups[t]); if(!l||!l.TaxaCompraM) return; names.push(t.replace('Tesouro ','T.')); rates.push(+(l.TaxaCompraM*100).toFixed(2)); colors.push(getColor(t)); });
+  destroyChart('compare');
+  charts['compare']=new Chart(document.getElementById('chart-compare'),{type:'bar',data:{labels:names,datasets:[{label:'Taxa % a.a.',data:rates,backgroundColor:colors.map(function(c){return c+'cc';}),borderColor:colors,borderWidth:1.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.x.toFixed(2)+'% a.a.';}}}}},scales:{x:{ticks:{callback:function(v){return v+'%';}},grid:{color:'rgba(0,0,0,0.05)'}},y:{grid:{display:false}}}});
+  document.getElementById('legend-compare').innerHTML=names.map(function(n,i){return '<span style="display:flex;align-items:center;gap:4px;font-size:11px"><span style="width:10px;height:10px;border-radius:2px;background:'+colors[i]+'"></span>'+n+': '+rates[i]+'%</span>';}).join('');
+  var html='';
+  titles.forEach(function(t){ var l=getLatest(groups[t]); if(!l) return; html+='<button class="title-btn" onclick="selectOverviewTitle(\''+t.replace(/\'/g,"\\'")+'\')"><div class="tb-name">'+t+'</div><div class="tb-rate" style="color:'+getColor(t)+'">'+fmtRate(l.TaxaCompraM)+'</div><div class="tb-tipo">'+groups[t].length.toLocaleString('pt-BR')+' registros</div></button>'; });
+  document.getElementById('title-cards-overview').innerHTML=html;
+})();
+
+// BUILD HISTORICO
+(function(){
+  var html='';
+  Object.keys(groups).forEach(function(t){ var l=getLatest(groups[t]); if(!l) return; html+='<button class="title-btn" data-title="'+t+'" onclick="selectHistTitle(\''+t.replace(/\'/g,"\\'")+'\')"><div class="tb-name">'+t+'</div><div class="tb-rate" style="color:'+getColor(t)+'">'+fmtRate(l.TaxaCompraM)+'</div><div class="tb-tipo">'+groups[t].length.toLocaleString('pt-BR')+' registros</div></button>'; });
+  document.getElementById('title-cards-hist').innerHTML=html;
+})();
+
+// BUILD RESGATAR
+(function(){
+  var now=new Date(), html='';
+  [{cls:'alert-green',title:'Tesouro Selic — resgate a qualquer momento',body:'Liquidez diária real sem perda relevante. Ideal para reserva de emergência. Taxa acompanha a Selic.'},{cls:'alert-amber',title:'Tesouro IPCA+ — atenção ao momento',body:'Taxa atual MAIOR que quando comprou → PU caiu, aguarde. Taxa atual MENOR → PU subiu, bom momento de venda antecipada.'},{cls:'alert-amber',title:'Tesouro Prefixado — só venda se a taxa caiu',body:'Taxa de mercado menor que taxa da sua compra → PU subiu → lucro antecipado. Taxa subiu → leve ao vencimento.'},{cls:'alert-blue',title:'Títulos com Juros Semestrais — cupons pagam periodicamente',body:'Receba renda a cada 6 meses. Lógica de marcação a mercado igual ao IPCA+ e Prefixado.'},{cls:'alert-green',title:'Regra de ouro: taxa alta = preço baixo (comprar); taxa baixa = preço alto (vender)',body:'Quando a taxa atual está abaixo da taxa da sua compra, considere o resgate antecipado do IPCA+ e Prefixado.'}].forEach(function(g){ html+='<div class="alert '+g.cls+'"><h4>'+g.title+'</h4><p>'+g.body+'</p></div>'; });
+  html+='<div class="sl" style="margin-top:1.5rem">Análise automática — taxa atual vs. média histórica (2 anos)</div>';
+  Object.keys(groups).forEach(function(t){ var rows=groups[t]; if(rows.length<20) return; var l=getLatest(rows); if(!l||!l.TaxaCompraM) return; var last2y=rows.filter(function(r){return r._date&&(now-r._date)<730*86400000;}); if(!last2y.length) return; var avg=last2y.reduce(function(s,r){return s+(r.TaxaCompraM||0);},0)/last2y.length; var curr=l.TaxaCompraM; var above=curr>avg*1.02; html+='<div class="alert '+(above?'alert-green':'alert-blue')+'"><h4>'+t+' — taxa '+(above?'acima':'abaixo')+' da média dos últimos 2 anos</h4><p>Atual: <strong>'+fmtRate(curr)+'</strong> · Média 2 anos: <strong>'+fmtRate(avg)+'</strong> · '+(above?'Momento favorável para compra.':'Favorável para resgate antecipado do IPCA+ e Prefixado.')+'</p></div>'; });
+  document.getElementById('resgatar-content').innerHTML=html;
+})();
+
+function selectOverviewTitle(name){ selectedTitle=name; showPage('historico'); selectHistTitle(name); }
+function selectHistTitle(name){
+  selectedTitle=name;
+  document.querySelectorAll('#title-cards-hist .title-btn').forEach(function(b){b.classList.toggle('selected',b.dataset.title===name);});
+  document.getElementById('hist-detail').classList.remove('hidden');
+  renderHistCharts();
+}
+function setRange(r){ activeRange=r; document.querySelectorAll('.range-btn').forEach(function(b){b.classList.toggle('active',b.textContent.trim()==={'6m':'6 meses','1a':'1 ano','2a':'2 anos','5a':'5 anos','max':'Máximo'}[r]);}); if(selectedTitle) renderHistCharts(); }
+function renderHistCharts(){
+  if(!selectedTitle) return;
+  var rows=groups[selectedTitle]||[], filtered=decimateLabels(filterRange(rows,activeRange),300), labels=filtered.map(function(r){return new Date(r._date).toLocaleDateString('pt-BR',{month:'2-digit',year:'2-digit'});}), color=getColor(selectedTitle), latest=getLatest(rows), prev=getPrevYear(rows), diff=(latest&&prev&&latest.TaxaCompraM!=null&&prev.TaxaCompraM!=null)?(latest.TaxaCompraM-prev.TaxaCompraM):null;
+  document.getElementById('hist-taxa-title').textContent=selectedTitle+' — Taxa de compra histórica';
+  document.getElementById('hist-pu-title').textContent=selectedTitle+' — PU de compra histórico';
+  document.getElementById('hist-metrics').innerHTML='<div class="metric"><div class="metric-label">Taxa atual</div><div class="metric-value">'+(latest?fmtRate(latest.TaxaCompraM):'—')+'</div><div class="metric-sub">em '+fmtDate(latest&&latest._date)+'</div></div><div class="metric"><div class="metric-label">PU compra</div><div class="metric-value" style="font-size:15px">'+(latest?fmtPU(latest.PUCompraM):'—')+'</div><div class="metric-sub">preço unitário</div></div><div class="metric"><div class="metric-label">Taxa há 1 ano</div><div class="metric-value" style="font-size:16px">'+(prev?fmtRate(prev.TaxaCompraM):'—')+'</div><div class="metric-sub">em '+fmtDate(prev&&prev._date)+'</div></div><div class="metric"><div class="metric-label">Var. 12 meses</div><div class="metric-value '+(diff==null?'':diff>0?'up':'down')+'" style="font-size:16px">'+(diff!=null?((diff>0?'+':'')+((diff*100).toFixed(2))+'pp'):'—')+'</div><div class="metric-sub">na taxa a.a.</div></div>';
+  destroyChart('taxa');
+  charts['taxa']=new Chart(document.getElementById('chart-taxa'),{type:'line',data:{labels:labels,datasets:[{label:'Taxa compra % a.a.',data:filtered.map(function(r){return r.TaxaCompraM!=null?+(r.TaxaCompraM*100).toFixed(4):null;}),borderColor:color,backgroundColor:color+'18',fill:true,tension:0.3,pointRadius:0,pointHoverRadius:4,borderWidth:1.5,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.y!=null?c.parsed.y.toFixed(2)+'% a.a.':'—';}}}},scales:{x:{ticks:{maxTicksLimit:10,autoSkip:true},grid:{display:false}},y:{ticks:{callback:function(v){return v+'%';}},grid:{color:'rgba(0,0,0,0.05)'}}}}});
+  destroyChart('pu');
+  charts['pu']=new Chart(document.getElementById('chart-pu'),{type:'line',data:{labels:labels,datasets:[{label:'PU compra R$',data:filtered.map(function(r){return r.PUCompraM!=null?+r.PUCompraM.toFixed(2):null;}),borderColor:'#1D9E75',backgroundColor:'#1D9E7518',fill:true,tension:0.3,pointRadius:0,pointHoverRadius:4,borderWidth:1.5,spanGaps:true}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.parsed.y!=null?'R$ '+c.parsed.y.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—';}}}}},scales:{x:{ticks:{maxTicksLimit:10,autoSkip:true},grid:{display:false}},y:{ticks:{callback:function(v){return 'R$ '+v.toLocaleString('pt-BR');}},grid:{color:'rgba(0,0,0,0.05)'}}}}});
+}
+
+var perfilData={conservador:[{nome:'Tesouro Selic',taxa:'14,75%',cor:'#185FA5',rec:true,rating:9,desc:'Acompanha a Selic dia a dia. Liquidez imediata. Sem marcação a mercado relevante. Ideal para reserva de emergência e horizonte curto.',momento:'Excelente — Selic a 14,75% ainda garante retorno real acima de 10% a.a.',tags:[{t:'Risco mínimo',c:'badge-green'},{t:'Liquidez diária',c:'badge-green'},{t:'Curto prazo',c:'badge-blue'}]},{nome:'Tesouro IPCA+ (vencimento ≤2030)',taxa:'IPCA + ~7%',cor:'#1D9E75',rec:false,rating:7,desc:'Protege contra inflação + taxa real de ~7% ao ano. Para conservador, preferir vencimentos curtos.',momento:'Bom — taxa real histórica. Manter até o vencimento é essencial.',tags:[{t:'Proteção inflação',c:'badge-green'},{t:'Taxa real alta',c:'badge-green'},{t:'Mark-to-market',c:'badge-amber'}]}],moderado:[{nome:'Tesouro IPCA+ 2035',taxa:'IPCA + ~7%',cor:'#1D9E75',rec:true,rating:9,desc:'Melhor equilíbrio risco-retorno. Trava taxa real elevada por ~10 anos. Se Selic cair, PU sobe.',momento:'Excelente momento — taxas reais próximas de máximas históricas.',tags:[{t:'Oportunidade histórica',c:'badge-green'},{t:'Proteção inflação',c:'badge-green'},{t:'Longo prazo',c:'badge-blue'},{t:'Mark-to-market',c:'badge-amber'}]},{nome:'Tesouro Selic',taxa:'14,75%',cor:'#185FA5',rec:false,rating:8,desc:'Manter parte da carteira em Selic para liquidez. Vai rendendo menos com a queda da Selic.',momento:'Ainda muito bom no curto prazo. Reduzir posição à medida que Selic cair.',tags:[{t:'Liquidez',c:'badge-green'},{t:'Risco zero',c:'badge-green'}]},{nome:'Tesouro Prefixado 2028',taxa:'~13,5%',cor:'#BA7517',rec:false,rating:6,desc:'Trava taxa nominal alta. Se Selic cair como previsto, PU sobe e há ganho de capital.',momento:'Interessante se acredita na queda da Selic. Risco se IPCA persistir.',tags:[{t:'Taxa nominal alta',c:'badge-amber'},{t:'Médio prazo',c:'badge-blue'},{t:'Risco alta Selic',c:'badge-amber'}]}],arrojado:[{nome:'Tesouro IPCA+ 2045 ou 2055',taxa:'IPCA + ~7%',cor:'#1D9E75',rec:true,rating:10,desc:'Máxima convexidade — queda de taxa gera valorização exponencial do PU. Oportunidade histórica.',momento:'Taxa real de 7% em título soberano é excepcional globalmente.',tags:[{t:'Alta convexidade',c:'badge-green'},{t:'Máximo retorno potencial',c:'badge-green'},{t:'Alta volatilidade PU',c:'badge-red'},{t:'Muito longo prazo',c:'badge-blue'}]},{nome:'Tesouro Prefixado 2031',taxa:'~13,5–14%',cor:'#BA7517',rec:false,rating:7,desc:'Aposta em queda mais intensa da Selic. Ganho de capital se taxa nominal cair para 9–10%.',momento:'Para quem acredita em cenário fiscal melhor que o consenso.',tags:[{t:'Alta alavancagem taxa',c:'badge-amber'},{t:'Ganho capital potencial',c:'badge-green'},{t:'Risco elevado',c:'badge-red'}]}]};
+function setPerfil(p){ activePerfil=p; document.querySelectorAll('.perfil-btn').forEach(function(b){b.classList.toggle('active',b.textContent.trim().toLowerCase()===p);}); buildPerfil(); }
+function buildPerfil(){ var list=perfilData[activePerfil],rec=list.find(function(t){return t.rec;}),html=''; if(rec) html+='<div class="alert alert-blue" style="margin-bottom:1rem"><h4>Recomendação principal para perfil '+activePerfil+': '+rec.nome+'</h4><p>'+rec.momento+'</p></div>'; list.forEach(function(t){ html+='<div class="rec-card'+(t.rec?' featured':'')+'"><div class="rec-head"><div><div class="rec-name">'+(t.rec?'⭐ ':'')+t.nome+'</div></div><div class="rec-rate" style="color:'+t.cor+'">'+t.taxa+'</div></div><div class="rec-desc">'+t.desc+'</div><div style="font-size:12px;color:#666;margin-bottom:.5rem"><strong>Momento:</strong> '+t.momento+'</div><div class="rating-bar">'+Array.from({length:10},function(_,i){return '<div class="rb '+(i<t.rating?'on':'off')+'"></div>';}).join('')+'</div><div style="font-size:10px;color:#888;margin-bottom:.5rem">'+t.rating+'/10</div><div class="tags">'+t.tags.map(function(tg){return '<span class="tag '+tg.c+'">'+tg.t+'</span>';}).join('')+'</div></div>'; }); document.getElementById('perfil-content').innerHTML=html; }
+buildPerfil();
+
+function updateSim(){ var v=parseFloat(document.getElementById('sim-valor').value)||10000,anos=parseInt(document.getElementById('sim-prazo').value)||5,ipca=parseFloat(document.getElementById('sim-ipca').value)/100,selic=parseFloat(document.getElementById('sim-selic').value)/100; document.getElementById('sim-prazo-v').textContent=anos; document.getElementById('sim-ipca-v').textContent=(ipca*100).toFixed(1).replace('.',','); document.getElementById('sim-selic-v').textContent=(selic*100).toFixed(1).replace('.',','); var ir=anos<=0.5?0.225:anos<=1?0.20:anos<=2?0.175:0.15; function calc(r){var b=v*Math.pow(1+r,anos);return Math.round(v+(b-v)*(1-ir));} function fmtBRL(n){return 'R$ '+n.toLocaleString('pt-BR');} var rS=calc(selic),rI=calc(ipca+0.07),rP=calc(0.135),rPoup=calc(0.065); document.getElementById('sim-metrics').innerHTML='<div class="metric"><div class="metric-label">Tesouro Selic</div><div class="metric-value up" style="font-size:16px">'+fmtBRL(rS)+'</div><div class="metric-sub">líquido de IR</div></div><div class="metric"><div class="metric-label">Tesouro IPCA+</div><div class="metric-value up" style="font-size:16px">'+fmtBRL(rI)+'</div><div class="metric-sub">líquido de IR</div></div><div class="metric"><div class="metric-label">Prefixado</div><div class="metric-value up" style="font-size:16px">'+fmtBRL(rP)+'</div><div class="metric-sub">líquido de IR</div></div><div class="metric"><div class="metric-label">Poupança</div><div class="metric-value down" style="font-size:16px">'+fmtBRL(rPoup)+'</div><div class="metric-sub">referência</div></div>'; var lbls=['Hoje'],dS=[v],dI=[v],dP=[v],dPoup=[v]; for(var i=1;i<=anos;i++){lbls.push('Ano '+i);dS.push(Math.round(v*Math.pow(1+selic,i)));dI.push(Math.round(v*Math.pow(1+ipca+0.07,i)));dP.push(Math.round(v*Math.pow(1+0.135,i)));dPoup.push(Math.round(v*Math.pow(1+0.065,i)));} destroyChart('sim'); charts['sim']=new Chart(document.getElementById('chart-sim'),{type:'line',data:{labels:lbls,datasets:[{label:'Tesouro Selic',data:dS,borderColor:'#185FA5',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:3,borderWidth:2},{label:'Tesouro IPCA+',data:dI,borderColor:'#1D9E75',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:3,borderWidth:2,borderDash:[5,3]},{label:'Prefixado',data:dP,borderColor:'#BA7517',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:3,borderWidth:2,borderDash:[2,4]},{label:'Poupança',data:dPoup,borderColor:'#888780',backgroundColor:'transparent',fill:false,tension:.3,pointRadius:2,borderWidth:1.5,borderDash:[1,3]}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.dataset.label+': R$ '+c.parsed.y.toLocaleString('pt-BR');}}}},scales:{x:{grid:{display:false}},y:{ticks:{callback:function(v){return 'R$ '+v.toLocaleString('pt-BR');}},grid:{color:'rgba(0,0,0,0.05)'}}}}}}); document.getElementById('sim-legend').innerHTML=[['#185FA5','Tesouro Selic'],['#1D9E75','Tesouro IPCA+'],['#BA7517','Prefixado'],['#888780','Poupança']].map(function(x){return '<span><span class="leg-sq" style="background:'+x[0]+'"></span>'+x[1]+'</span>';}).join(''); }
+updateSim();
+
+function showPage(p){ ['overview','historico','resgatar','macro','titulos','cenarios','simulador'].forEach(function(pg){var el=document.getElementById('page-'+pg);if(el)el.classList.toggle('hidden',pg!==p);}); document.querySelectorAll('.nav-item').forEach(function(b){b.classList.remove('active');}); var map={overview:0,historico:1,resgatar:2,macro:3,titulos:4,cenarios:5,simulador:6}; var items=document.querySelectorAll('.nav-item'); if(items[map[p]]) items[map[p]].classList.add('active'); if(p==='titulos') buildPerfil(); if(p==='simulador') updateSim(); }
+<\/script>
+<\/body>
+<\/html>`;
+
+// ==========================================
+// STATE
+// ==========================================
+var generatedBlob = null;
+
+// ==========================================
+// DRAG & DROP
+// ==========================================
+var dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', function(){ dz.classList.remove('drag'); });
+dz.addEventListener('drop', function(e){
+  e.preventDefault(); dz.classList.remove('drag');
+  var f = e.dataTransfer.files[0];
+  if (f) processFile(f);
+});
+
+function handleCSV(evt) {
+  var file = evt.target.files[0];
+  if (file) processFile(file);
+}
+
+// ==========================================
+// PROCESS FILE
+// ==========================================
+function processFile(file) {
+  showProgress('Lendo arquivo...');
+  hideResult(); hideError();
+
+  var reader = new FileReader();
+  reader.onerror = function() { showError('Erro ao ler o arquivo. Tente novamente.'); };
+  reader.onload = function(e) {
+    try {
+      showProgress('Analisando CSV...', 30);
+      var text = e.target.result;
+      var parsed = Papa.parse(text, { header: true, skipEmptyLines: true, delimiter: ';' });
+      if (!parsed.data.length) throw new Error('Arquivo vazio ou delimitador incorreto. Tente abrir o CSV e salvar com ponto-e-vírgula.');
+
+      showProgress('Processando registros...', 55);
+      var rows = parsed.data;
+      var keys = Object.keys(rows[0]);
+
+      function get(r, patterns) {
+        for (var i=0;i<patterns.length;i++)
+          for (var j=0;j<keys.length;j++)
+            if (keys[j].toLowerCase().replace(/\s+/g,'').indexOf(patterns[i].toLowerCase().replace(/\s+/g,''))>-1) return r[keys[j]];
+        return null;
+      }
+      function parseDate(str) {
+        if (!str) return null;
+        var p = str.trim().split('/');
+        return p.length===3 ? new Date(+p[2], +p[1]-1, +p[0]).toISOString() : null;
+      }
+      function parsePU(str) {
+        if (!str) return null;
+        var v = parseFloat(str.trim().replace(/\./g,'').replace(',','.'));
+        return isNaN(v) ? null : v;
+      }
+      function parseRate(str) {
+        if (!str) return null;
+        var v = parseFloat(str.trim().replace(',','.'));
+        return isNaN(v) ? null : v/100;
+      }
+
+      var result = rows.map(function(r) {
+        return {
+          TipoTitulo: (get(r,['TipoTitulo','Tipo Titulo','Tipo'])||'').trim(),
+          DataVencimento: get(r,['DataVencimento','Data Vencimento'])||'',
+          _date: parseDate(get(r,['DataBase','Data Base','Data'])),
+          TaxaCompraM: parseRate(get(r,['TaxaCompraM','Taxa Compra Manha','Taxa Compra Manhã'])),
+          TaxaVendaM: parseRate(get(r,['TaxaVendaM','Taxa Venda Manha','Taxa Venda Manhã'])),
+          PUCompraM: parsePU(get(r,['PUCompraM','PU Compra Manha','PU Compra Manhã'])),
+          PUVendaM: parsePU(get(r,['PUVendaM','PU Venda Manha','PU Venda Manhã'])),
+        };
+      }).filter(function(r){ return r._date && r.TipoTitulo; });
+
+      if (!result.length) throw new Error('Nenhum registro válido encontrado. Verifique se o arquivo é o CSV correto do Tesouro Direto.');
+
+      showProgress('Gerando index.html...', 80);
+
+      // Stats
+      var titles = [...new Set(result.map(function(r){return r.TipoTitulo;}))];
+      var dates = result.map(function(r){return r._date;}).filter(Boolean).sort();
+      var anos = Math.round((new Date(dates[dates.length-1]) - new Date(dates[0])) / 86400000 / 365);
+
+      // Inject data into template
+      var dataJSON = JSON.stringify(result);
+      var finalHTML = SITE_TEMPLATE.replace('DATA_PLACEHOLDER', dataJSON);
+
+      showProgress('Preparando download...', 95);
+
+      generatedBlob = new Blob([finalHTML], { type: 'text/html;charset=utf-8' });
+      triggerDownload();
+
+      // Show result
+      document.getElementById('st-registros').textContent = result.length.toLocaleString('pt-BR');
+      document.getElementById('st-titulos').textContent = titles.length;
+      document.getElementById('st-anos').textContent = anos;
+      showResult();
+      hideProgress();
+
+    } catch(err) {
+      hideProgress();
+      showError(err.message);
+    }
+  };
+  reader.readAsText(file, 'latin1');
+}
+
+function triggerDownload() {
+  if (!generatedBlob) return;
+  var url = URL.createObjectURL(generatedBlob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'index.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
+
+function showProgress(msg, pct) {
+  document.getElementById('progress-area').style.display = 'block';
+  document.getElementById('progress-label').textContent = msg;
+  document.getElementById('progress-bar').style.width = (pct||10)+'%';
+}
+function hideProgress() { document.getElementById('progress-area').style.display = 'none'; }
+function showResult() { document.getElementById('result-area').style.display = 'block'; }
+function hideResult() { document.getElementById('result-area').style.display = 'none'; }
+function showError(msg) { document.getElementById('error-area').style.display = 'block'; document.getElementById('error-msg').textContent = msg; }
+function hideError() { document.getElementById('error-area').style.display = 'none'; }
+</script>
+</body>
+</html>
